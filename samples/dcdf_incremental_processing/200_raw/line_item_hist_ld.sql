@@ -24,126 +24,141 @@ select count(*), count( distinct o_orderkey ) from line_item_stg;
 select count(*), count( distinct dw_line_item_shk ), count( distinct dw_hash_diff ) from line_item_hist;
 */
 
-execute immediate $$
+CREATE TABLE line_item_hist (
+    dw_line_item_shk VARCHAR(40),
+    dw_hash_diff VARCHAR(40),
+    dw_load_ts TIMESTAMP,
+    l_orderkey INTEGER,
+    o_orderdate DATE,
+    l_partkey INTEGER,
+    l_suppkey INTEGER,
+    l_linenumber INTEGER,
+    l_quantity DECIMAL(10,2),
+    l_extendedprice DECIMAL(10,2),
+    l_discount DECIMAL(10,2),
+    l_tax DECIMAL(10,2),
+    l_returnflag CHAR(1),
+    l_linestatus CHAR(1),
+    l_shipdate DATE,
+    l_commitdate DATE,
+    l_receiptdate DATE,
+    l_shipinstruct VARCHAR(25),
+    l_shipmode VARCHAR(10),
+    l_comment VARCHAR(100),
+    last_modified_dt TIMESTAMP,
+    dw_file_name VARCHAR(100),
+    dw_file_row_no INTEGER,
+    dw_load_ts_updated TIMESTAMP
+);
 
-declare
-  l_start_dt date;
-  l_end_dt   date;
-  -- Grab the dates for the logical partitions to process
-  c1 cursor for select start_dt, end_dt FROM table(dev_webinar_common_db.util.dw_delta_date_range_f('week')) order by 1;
 
-begin
+EXECUTE IMMEDIATE '
+DECLARE
+  l_start_dt DATE;
+  l_end_dt   DATE;
+  c1 CURSOR FOR SELECT start_dt, end_dt FROM table(dev_webinar_common_db.util.dw_delta_date_range_f(''week'')) ORDER BY 1;
 
-  --
-  -- Loop through the dates to incrementally process based on the logical partition definition.
-  -- In this example, the logical partitions are by week.
-  --
-  for record in c1 do
+BEGIN
+
+  FOR record IN c1 DO
     l_start_dt := record.start_dt;
     l_end_dt   := record.end_dt;
 
-    --
-    -- insert new and modified records into history table with version date
-    -- dedupe source records as part of insert
-    --
-    -- run a second time to see that no rows will be inserted
-    --
-    insert into line_item_hist
-    with l_stg as
+    INSERT INTO line_item_hist
+    WITH l_stg AS
     (
-        --
-        -- Driving CTE to identify all records in the logical partition to be processed.
-        select
-            -- generate hash key and hash diff to streamline processing
-             sha1_binary( concat( s.l_orderkey, '|', s.l_linenumber ) )  as dw_line_item_shk
-            --
-            -- note that last_modified_dt is not included in the hash diff since it only represents recency of the record versus an 
-            -- actual meaningful change in the data
-            ,sha1_binary( concat( s.l_orderkey
-                                         ,'|', coalesce( to_char( s.o_orderdate, 'yyyymmdd' ), '~' )
-                                         ,'|', s.l_linenumber
-                                         ,'|', coalesce( to_char( s.l_partkey ), '~' )
-                                         ,'|', coalesce( to_char( s.l_suppkey ), '~' )
-                                         ,'|', coalesce( to_char( s.l_quantity ), '~' )
-                                         ,'|', coalesce( to_char( s.l_extendedprice ), '~' )
-                                         ,'|', coalesce( to_char( s.l_discount ), '~' )
-                                         ,'|', coalesce( to_char( s.l_tax ), '~' )
-                                         ,'|', coalesce( to_char( s.l_returnflag ), '~' )
-                                         ,'|', coalesce( to_char( s.l_linestatus ), '~' )
-                                         ,'|', coalesce( to_char( s.l_shipdate, 'yyyymmdd' ), '~' )
-                                         ,'|', coalesce( to_char( s.l_commitdate, 'yyyymmdd' ), '~' )
-                                         ,'|', coalesce( to_char( s.l_receiptdate, 'yyyymmdd' ), '~' )
-                                         ,'|', coalesce( s.l_shipinstruct, '~' )
-                                         ,'|', coalesce( s.l_shipmode, '~' )
-                                         ,'|', coalesce( s.l_comment, '~' )
-                                )
-        
-                        )               as dw_hash_diff
-            ,s.*
-        from
+        SELECT
+            HEX_ENCODE(SHA1_BINARY(CONCAT(s.l_orderkey, ''|'', s.l_linenumber))) AS dw_line_item_shk,
+            HEX_ENCODE(SHA1_BINARY(CONCAT(
+                s.l_orderkey,
+                ''|'',
+                COALESCE(TO_CHAR(s.o_orderdate, ''yyyymmdd''), ''~''),
+                ''|'',
+                s.l_linenumber,
+                ''|'',
+                COALESCE(TO_CHAR(s.l_partkey), ''~''),
+                ''|'',
+                COALESCE(TO_CHAR(s.l_suppkey), ''~''),
+                ''|'',
+                COALESCE(TO_CHAR(s.l_quantity), ''~''),
+                ''|'',
+                COALESCE(TO_CHAR(s.l_extendedprice), ''~''),
+                ''|'',
+                COALESCE(TO_CHAR(s.l_discount), ''~''),
+                ''|'',
+                COALESCE(TO_CHAR(s.l_tax), ''~''),
+                ''|'',
+                COALESCE(TO_CHAR(s.l_returnflag), ''~''),
+                ''|'',
+                COALESCE(TO_CHAR(s.l_linestatus), ''~''),
+                ''|'',
+                COALESCE(TO_CHAR(s.l_shipdate, ''yyyymmdd''), ''~''),
+                ''|'',
+                COALESCE(TO_CHAR(s.l_commitdate, ''yyyymmdd''), ''~''),
+                ''|'',
+                COALESCE(TO_CHAR(s.l_receiptdate, ''yyyymmdd''), ''~''),
+                ''|'',
+                COALESCE(s.l_shipinstruct, ''~''),
+                ''|'',
+                COALESCE(s.l_shipmode, ''~''),
+                ''|'',
+                COALESCE(s.l_comment, ''~'')
+            ))) AS dw_hash_diff,
+            s.*
+        FROM
             line_item_stg s
-        where
-                s.o_orderdate >= :l_start_dt
-            and s.o_orderdate  < :l_end_dt
-    )
-    ,l_deduped as
+        WHERE
+            s.o_orderdate >= :l_start_dt
+            AND s.o_orderdate < :l_end_dt
+    ),
+    l_deduped AS
     (
-        --
-        -- Dedupe the records from the staging table.
-        -- This assumes that there may be late arriving or duplicate data that were loaded
-        -- Need to identify the most recent record and use that to update the Current state table.
-        -- as there is no reason to process each individual change in the record, the last one would have the most recent updates
-        select
+        SELECT
             *
-        from
+        FROM
             l_stg
-        qualify
-            row_number() over( partition by dw_hash_diff order by last_modified_dt desc, dw_file_row_no )  = 1
+        QUALIFY
+            ROW_NUMBER() OVER (PARTITION BY dw_hash_diff ORDER BY last_modified_dt DESC, dw_file_row_no) = 1
     )
-    select
-         s.dw_line_item_shk
-        ,s.dw_hash_diff
-        ,s.dw_load_ts             as dw_version_ts
-        ,s.l_orderkey
-        ,s.o_orderdate
-        ,s.l_partkey
-        ,s.l_suppkey
-        ,s.l_linenumber
-        ,s.l_quantity
-        ,s.l_extendedprice
-        ,s.l_discount
-        ,s.l_tax
-        ,s.l_returnflag
-        ,s.l_linestatus
-        ,s.l_shipdate
-        ,s.l_commitdate
-        ,s.l_receiptdate
-        ,s.l_shipinstruct
-        ,s.l_shipmode
-        ,s.l_comment
-        ,s.last_modified_dt
-        ,s.dw_file_name
-        ,s.dw_file_row_no
-        ,current_timestamp()    as dw_load_ts
-    
-    from
+    SELECT
+        s.dw_line_item_shk,
+        s.dw_hash_diff,
+        s.dw_load_ts AS dw_version_ts,
+        s.l_orderkey,
+        s.o_orderdate,
+        s.l_partkey,
+        s.l_suppkey,
+        s.l_linenumber,
+        s.l_quantity,
+        s.l_extendedprice,
+        s.l_discount,
+        s.l_tax,
+        s.l_returnflag,
+        s.l_linestatus,
+        s.l_shipdate,
+        s.l_commitdate,
+        s.l_receiptdate,
+        s.l_shipinstruct,
+        s.l_shipmode,
+        s.l_comment,
+        s.last_modified_dt,
+        s.dw_file_name,
+        s.dw_file_row_no,
+        CURRENT_TIMESTAMP AS dw_load_ts
+    FROM
         l_deduped s
-    where
-        s.dw_hash_diff not in
-        (
-            select dw_hash_diff from line_item_hist 
-            where
-                    o_orderdate >= :l_start_dt
-                and o_orderdate  < :l_end_dt
+    WHERE
+        TO_VARCHAR(s.dw_line_item_shk) NOT IN (
+            SELECT TO_VARCHAR(dw_line_item_shk) FROM line_item_hist
+            WHERE
+                o_orderdate >= :l_start_dt
+                AND o_orderdate < :l_end_dt
         )
-    order by
-        o_orderdate  -- physically sort rows by a logical partitioning date
-    ;
+    ORDER BY
+        o_orderdate;
 
-  end for;
+  END FOR;
 
-  return 'SUCCESS';
+  RETURN ''SUCCESS'';
 
-end;
-$$
-;
+END;';

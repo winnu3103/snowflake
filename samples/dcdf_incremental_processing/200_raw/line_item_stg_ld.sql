@@ -10,7 +10,8 @@ use role     sysadmin;
 use database dev_webinar_orders_rl_db;
 use schema   tpch;
 use warehouse dev_webinar_wh;
-
+list @~ pattern = 'line_item.*';
+list @~ pattern = 'line_item/data.*\.csv\.gz';
 /* Validation Queries
 queries for reviewing loaded data
 
@@ -28,6 +29,29 @@ put file:///users/<username>/test/data_bad.csv @~/orders
 
 -- Truncate/Load Pattern
 -- truncate stage prior to bulk load, to clean out the rows from the prior load
+CREATE TABLE line_item_stg (
+    l_orderkey INT,
+    o_orderdate DATE,
+    l_partkey INT,
+    l_suppkey INT,
+    l_linenumber INT,
+    l_quantity DECIMAL(10,2),
+    l_extendedprice DECIMAL(10,2),
+    l_discount DECIMAL(10,2),
+    l_tax DECIMAL(10,2),
+    l_returnflag CHAR(1),
+    l_linestatus CHAR(1),
+    l_shipdate DATE,
+    l_commitdate DATE,
+    l_receiptdate DATE,
+    l_shipinstruct VARCHAR(100),
+    l_shipmode VARCHAR(100),
+    l_comment VARCHAR(1000),
+    last_modified_dt DATETIME,
+    dw_file_name VARCHAR(255),
+    dw_file_row_no INT,
+    dw_load_ts TIMESTAMP
+);
 truncate table line_item_stg;
 
 -- perform bulk load

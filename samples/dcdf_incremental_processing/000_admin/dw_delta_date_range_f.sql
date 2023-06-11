@@ -6,39 +6,31 @@
 --  -------- ------------- ---------------------------------create or replace function if not-
 --  dd/mm/yy
 --------------------------------------------------------------------
-use database &{l_common_db};
-use schema   &{l_common_schema};;
+use database DEV_WEBINAR_COMMON_DB;
+use schema   util;
 
-create or replace function dw_delta_date_range_f
-(
-    p_period_type_cd   varchar
+CREATE OR REPLACE FUNCTION dw_delta_date_range_f (
+    p_period_type_cd VARCHAR
 )
-returns table( start_dt timestamp_ltz, end_dt timestamp_ltz )
-as
+RETURNS TABLE (start_dt DATE, end_dt DATE)
+LANGUAGE SQL
+AS
 $$
-    select
-         start_dt
-        ,end_dt
-    from
-        (
-        select
-             case lower( p_period_type_cd )
-                 when 'all'     then current_date()
-                 when 'day'     then date_trunc( day, event_dt )
-                 when 'week'    then date_trunc( week, event_dt )
-                 when 'month'   then date_trunc( month, event_dt )
-                 when 'quarter' then date_trunc( quarter, event_dt )
-                 when 'year'    then date_trunc( year, event_dt )
-                 else current_date()
-             end                as partition_dt
-            ,min( event_dt ) as start_dt
-            ,dateadd( day, 1, max( event_dt ) ) as end_dt
-        from
-            dw_delta_date
-        group by
-            1
-        )
-    order by
+    SELECT
+        CASE LOWER(p_period_type_cd)
+            WHEN 'all'     THEN CURRENT_DATE()
+            WHEN 'day'     THEN DATE_TRUNC('day', event_dt)::DATE
+            WHEN 'week'    THEN DATE_TRUNC('week', event_dt)::DATE
+            WHEN 'month'   THEN DATE_TRUNC('month', event_dt)::DATE
+            WHEN 'quarter' THEN DATE_TRUNC('quarter', event_dt)::DATE
+            WHEN 'year'    THEN DATE_TRUNC('year', event_dt)::DATE
+            ELSE CURRENT_DATE()
+        END AS start_dt,
+        MAX(event_dt) + INTERVAL '1 DAY' AS end_dt
+    FROM
+        dw_delta_date
+    GROUP BY
+        1
+    ORDER BY
         1
 $$
-;
