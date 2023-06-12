@@ -25,7 +25,26 @@ select count(*), count( distinct p_partkey ), min( o_orderdate ), max( o_orderda
 
 select count(*), count( distinct dw_part_shk ), count( distinct dw_hash_diff ) from part;
 */
-
+CREATE TABLE IF NOT EXISTS dev_webinar_orders_rl_db.tpch.part (
+      dw_part_shk        BINARY(20)    NOT NULL,
+      dw_hash_diff       BINARY(20)    NOT NULL,
+      dw_version_ts      TIMESTAMP_LTZ NOT NULL,
+      p_partkey          INT           NOT NULL,
+      p_name             VARCHAR(55)   NOT NULL,
+      p_mfgr             VARCHAR(25)   NOT NULL,
+      p_brand            VARCHAR(10)   NOT NULL,
+      p_type             VARCHAR(25)   NOT NULL,
+      p_size             INT           NOT NULL,
+      p_container        VARCHAR(10)   NOT NULL,
+      p_retailprice      DECIMAL(15,2) NOT NULL,
+      p_comment          VARCHAR(23)   NOT NULL,
+      last_modified_dt   TIMESTAMP_LTZ NOT NULL,
+      dw_file_name       VARCHAR(255)  NOT NULL,
+      dw_file_row_no     INT           NOT NULL,
+      dw_load_ts         TIMESTAMP_LTZ NOT NULL,
+      dw_update_ts       TIMESTAMP_LTZ NOT NULL,
+      PRIMARY KEY (dw_part_shk)
+    );
 execute immediate $$
 
 begin
@@ -42,10 +61,10 @@ begin
             --
             select
                 -- generate hash key and hash diff to streamline processing
-                 sha1_binary( s.p_partkey )  as dw_part_shk
+                 sha1_binary(s.p_partkeyy)  as dw_part_shk
                 -- note that last_modified_dt is not included in the hash diff since it only represents recency of the record versus an 
                 -- actual meaningful change in the data
-                ,sha1_binary( concat( s.p_partkey
+                ,sha1_binary( concat( s.p_partkeyy
                                      ,'|', coalesce( s.p_name, '~' )
                                      ,'|', coalesce( s.p_mfgr, '~' )
                                      ,'|', coalesce( s.p_brand, '~' )
@@ -98,7 +117,7 @@ begin
                 and t.dw_hash_diff     != s.dw_hash_diff
                )
         order by
-            s.p_partkey
+            s.p_partkeyy
     ) src
     on
     (
@@ -144,7 +163,7 @@ begin
          src.dw_part_shk
         ,src.dw_hash_diff
         ,src.dw_version_ts
-    	,src.p_partkey
+    	,src.p_partkeyy
     	,src.p_name
     	,src.p_mfgr
     	,src.p_brand

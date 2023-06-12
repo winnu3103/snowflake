@@ -25,7 +25,14 @@ select count(*), count( distinct l_orderkey ), min( o_orderdate ), max( o_orderd
 
 select count(*), count( distinct dw_line_item_shk ), count( distinct dw_hash_diff ) from line_item;
 */
-
+CREATE TABLE line_item_margin (
+    dw_line_item_shk      VARCHAR(40),
+    o_orderdate           DATE,
+    margin_amt            DECIMAL(18, 2),
+    last_modified_dt      TIMESTAMP,
+    dw_load_ts            TIMESTAMP,
+    dw_update_ts          TIMESTAMP
+);
 -- Anonymous block
 execute immediate $$
 
