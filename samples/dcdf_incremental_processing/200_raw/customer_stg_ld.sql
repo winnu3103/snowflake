@@ -28,6 +28,21 @@ put file:///users/<user_name>/test/data_bad.csv @~/customer
 
 -- Truncate/Load Pattern
 -- truncate stage prior to bulk load
+
+CREATE TABLE customer_stg (
+  c_custkey INT,
+  change_date DATE,
+  c_name STRING,
+  c_address STRING,
+  c_nationkey INT,
+  c_phone STRING,
+  c_acctbal FLOAT,
+  c_mktsegment STRING,
+  c_comment STRING,
+  dw_file_name STRING,
+  dw_file_row_no INT,
+  dw_load_ts TIMESTAMP
+);
 truncate table customer_stg;
 
 -- perform bulk load

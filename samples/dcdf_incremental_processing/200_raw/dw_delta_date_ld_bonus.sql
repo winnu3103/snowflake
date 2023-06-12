@@ -11,8 +11,11 @@ use role     sysadmin;
 use database dev_webinar_common_db;
 use schema   util;
 use warehouse dev_webinar_wh;
-
-insert overwrite into dw_delta_date
+CREATE TABLE dw_delta_date1 (
+  event_dt DATE,
+  dw_load_ts TIMESTAMP
+);
+insert overwrite into dw_delta_date1
 with l_delta_date as
 (
     select distinct

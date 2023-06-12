@@ -12,7 +12,25 @@ use role      sysadmin;
 use database  dev_webinar_pl_db;
 use schema    main;
 use warehouse dev_webinar_wh;
-
+CREATE TABLE order_line_fact_bonus (
+  dw_line_item_shk BINARY(20),
+  o_orderdate DATE,
+  dw_order_shk BINARY(20),
+  dw_part_shk BINARY(20),
+  dw_supplier_shk BINARY(20),
+  dw_customer_shk BINARY(20),
+  quantity DECIMAL(15, 2),
+  extendedprice DECIMAL(15, 2),
+  discount DECIMAL(15, 2),
+  tax DECIMAL(15, 2),
+  returnflag VARCHAR(1),
+  linestatus VARCHAR(1),
+  l_shipdate DATE,
+  l_commitdate DATE,
+  l_receiptdate DATE,
+  margin_amt DECIMAL(15, 2),
+  dw_load_ts TIMESTAMP
+);
 execute immediate $$
 
 declare
@@ -41,9 +59,9 @@ begin
        
      -- Delete the records using the logical partition 
      -- Very efficient when all the rows are in the same micropartitions.  Mirrors a truncate table in other database platforms.
-     delete from order_line_fact_bonus
-     where orderdate >= :l_start_dt
-       and orderdate <  :l_end_dt;
+     --delete from order_line_fact_bonus
+     --where orderdate >= :l_start_dt
+       --and orderdate <  :l_end_dt;
  
      -- Insert the logical partitioned records into the table
      -- Inserts data from same order date into the same micropartitions
@@ -64,7 +82,7 @@ begin
         ,o.o_orderdate
         ,o.dw_order_shk
         ,p.dw_part_shk
-        ,s.dw_supplier_shk
+        ,s.dw_partsupp_shk
         ,c.dw_customer_shk
         ,li.l_quantity      as quantity
         ,li.l_extendedprice as extendedprice
@@ -83,7 +101,7 @@ begin
          join dev_webinar_orders_rl_db.tpch.orders o
            on o.o_orderkey = li.l_orderkey
          --
-         join dev_webinar_il_db.main.line_item_margin lim
+         join dev_webinar_orders_rl_db.tpch.line_item_margin lim
            on lim.dw_line_item_shk = li.dw_line_item_shk
          --
          -- Left outer join in case the part record is late arriving
@@ -93,8 +111,8 @@ begin
          --
          -- left outer join in case the supplier record is late arriving
          --
-         left outer join dev_webinar_orders_rl_db.tpch.supplier s
-           on s.s_suppkey = li.l_suppkey
+         left outer join dev_webinar_orders_rl_db.tpch.partsupp s
+           on s.ps_suppkey = li.l_suppkey
          -- 
          left outer join l_cust c
            on   o.o_custkey    = c.c_custkey 

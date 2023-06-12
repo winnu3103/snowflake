@@ -12,7 +12,19 @@ use role     sysadmin;
 use database dev_webinar_pl_db;
 use schema   main;
 use warehouse dev_webinar_wh;
-
+CREATE TABLE customer_dm (
+  dw_customer_shk  BINARY(20),
+  c_custkey        INTEGER,
+  c_name           STRING,
+  c_address        STRING,
+  c_nationkey      INTEGER,
+  c_phone          STRING,
+  c_acctbal        FLOAT,
+  c_mktsegment     STRING,
+  comment          STRING,
+  dw_load_ts       TIMESTAMP,
+  dw_update_ts     TIMESTAMP
+);
 execute immediate $$
 
 begin

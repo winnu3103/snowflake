@@ -23,7 +23,23 @@ select count(*), count( distinct c_custkey ) from customer_stg;
 
 select count(*), count( distinct dw_customer_shk ), count( distinct dw_hash_diff ) from customer_hist;
 */
-
+CREATE TABLE customer_hist (
+  dw_customer_shk     BINARY(20),
+  dw_hash_diff        BINARY(20),
+  dw_version_ts       TIMESTAMP,
+  change_date         DATE,
+  c_custkey           INTEGER,
+  c_name              STRING,
+  c_address           STRING,
+  c_nationkey         INTEGER,
+  c_phone             STRING,
+  c_acctbal           FLOAT,
+  c_mktsegment        STRING,
+  c_comment           STRING,
+  dw_file_name        STRING,
+  dw_file_row_no      INTEGER,
+  dw_load_ts          TIMESTAMP
+);
 execute immediate $$
 
 declare
