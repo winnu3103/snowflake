@@ -25,7 +25,12 @@ select count(*), count( distinct l_orderkey ), min( o_orderdate ), max( o_orderd
 
 select count(*), count( distinct dw_line_item_shk ), count( distinct dw_hash_diff ) from line_item;
 */
-
+create or replace table part_first_order_dt (
+    dw_part_shk        binary(20),
+    first_orderdate    DATE,
+    dw_load_ts         TIMESTAMP,
+    dw_update_ts       TIMESTAMP
+);
 -- What is the timeframe to be processed
 select min( o_orderdate ), max( o_orderdate ), datediff( day, min(o_orderdate), max(o_orderdate)) from dev_webinar_orders_rl_db.tpch.line_item_stg;
 
@@ -55,7 +60,7 @@ begin
             -- Driving CTE to identify all the records in the logical partition to be process
             --
             select
-                 p.dw_part_shk
+                 sha1_binary(p.dw_part_shk) as dw_part_shk
                 ,min( s.o_orderdate ) as first_orderdate
                 ,current_timestamp() as last_modified_dt
             from
