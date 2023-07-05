@@ -31,105 +31,73 @@ CREATE TABLE order_line_fact_bonus (
   margin_amt DECIMAL(15, 2),
   dw_load_ts TIMESTAMP
 );
-execute immediate $$
-
-declare
-  l_start_dt       date;
-  l_end_dt         date;
-  -- Grab the dates for the logical partitions to process
-  c1 cursor for select start_dt, end_dt FROM table(dev_webinar_common_db.util.dw_delta_date_range_f('week')) order by 1;
-  
-begin
-    
-  --
-  -- Loop through the dates to incrementally process based on the logical partition definition.
-  -- In this example, the logical partitions are by week.
-  --
-  for record in c1 do
-    l_start_dt       := record.start_dt;
-    l_end_dt         := record.end_dt;
-
-    --
-    -- delete from the current table the logical partition to be processed.
-    -- then insert the updated records.
-    -- very similar to the Oracle method of inserting records into a table, and swapping that table into the Oracle partitioned table once proceessed
-    --
-    -- Start a transaction such that delete and insert are all committed at once.
-    -- Decouple the for loop and begin transaction, fork processes to run concurrently - PUT PRESENTATION
-       
-     -- Delete the records using the logical partition 
-     -- Very efficient when all the rows are in the same micropartitions.  Mirrors a truncate table in other database platforms.
-     --delete from order_line_fact_bonus
-     --where orderdate >= :l_start_dt
-       --and orderdate <  :l_end_dt;
- 
-     -- Insert the logical partitioned records into the table
-     -- Inserts data from same order date into the same micropartitions
-     -- Enables efficient querying of the data for consumption
-     insert into order_line_fact_bonus
-     with l_cust as
-     (
-        select
-            dw_customer_shk
-           ,c_custkey
-           ,change_date as active_date
-           ,nvl( lead( change_date) over (partition by c_custkey order by change_date), to_date('1/1/2888','mm/dd/yyyy')) as inactive_date
-        from
-             dev_webinar_orders_rl_db.tpch.customer_hist
-     )
-     select
-         li.dw_line_item_shk
-        ,o.o_orderdate
-        ,o.dw_order_shk
-        ,p.dw_part_shk
-        ,s.dw_partsupp_shk
-        ,c.dw_customer_shk
-        ,li.l_quantity      as quantity
-        ,li.l_extendedprice as extendedprice
-        ,li.l_discount      as discount
-        ,li.l_tax           as tax
-        ,li.l_returnflag    as returnflag
-        ,li.l_linestatus    as linestatus
-        ,li.l_shipdate
-        ,li.l_commitdate
-        ,li.l_receiptdate
-        ,lim.margin_amt
-        ,current_timestamp() as dw_load_ts
-     from
-         dev_webinar_orders_rl_db.tpch.line_item li
-         --
-         join dev_webinar_orders_rl_db.tpch.orders o
-           on o.o_orderkey = li.l_orderkey
-         --
-         join dev_webinar_orders_rl_db.tpch.line_item_margin lim
-           on lim.dw_line_item_shk = li.dw_line_item_shk
-         --
-         -- Left outer join in case the part record is late arriving
-         --
-         left outer join dev_webinar_orders_rl_db.tpch.part p
-           on p.p_partkey = li.l_partkey
-         --
-         -- left outer join in case the supplier record is late arriving
-         --
-         left outer join dev_webinar_orders_rl_db.tpch.partsupp s
-           on s.ps_suppkey = li.l_suppkey
-         -- 
-         left outer join l_cust c
-           on   o.o_custkey    = c.c_custkey 
-            and o.o_orderdate >= c.active_date
-            and o.o_orderdate  < c.inactive_date
-     where 
-             li.o_orderdate >= :l_start_dt
-         and li.o_orderdate <  :l_end_dt
-     order by o.o_orderdate;
-
-  end for;
-  
-  return 'SUCCESS';
-
-end;
+CREATE OR REPLACE PROCEDURE process_order_data()
+RETURNS STRING
+LANGUAGE SQL
+EXECUTE AS CALLER
+AS
 $$
-;
+DECLARE
+  l_start_dt DATE;
+  l_end_dt DATE;
+  c1 CURSOR FOR SELECT start_dt, end_dt FROM TABLE(tasksample.public.dw_delta_date_range_f('week')) ORDER BY 1;
+BEGIN
+    
+  FOR record IN c1 DO
+    l_start_dt := record.start_dt;
+    l_end_dt := record.end_dt;
+
+    -- Delete the records using the logical partition
+    DELETE FROM order_line_fact_bonus
+    WHERE orderdate >= l_start_dt
+      AND orderdate < l_end_dt;
+      
+    -- Insert the logical partitioned records into the table
+    INSERT INTO order_line_fact_bonus
+    WITH l_cust AS (
+      SELECT
+          dw_customer_shk,
+          c_custkey,
+          change_date AS active_date,
+          NVL(LEAD(change_date) OVER (PARTITION BY c_custkey ORDER BY change_date), TO_DATE('1/1/2888', 'mm/dd/yyyy')) AS inactive_date
+      FROM tasksample.public.customer_hist
+    )
+    SELECT
+        li.dw_line_item_shk,
+        o.o_orderdate,
+        o.dw_order_shk,
+        p.dw_part_shk,
+        s.dw_partsupp_shk,
+        c.dw_customer_shk,
+        li.l_quantity AS quantity,
+        li.l_extendedprice AS extendedprice,
+        li.l_discount AS discount,
+        li.l_tax AS tax,
+        li.l_returnflag AS returnflag,
+        li.l_linestatus AS linestatus,
+        li.l_shipdate,
+        li.l_commitdate,
+        li.l_receiptdate,
+        lim.margin_amt,
+        CURRENT_TIMESTAMP() AS dw_load_ts
+    FROM
+        tasksample.public..line_item li
+        JOIN tasksample.public.orders o ON o.o_orderkey = li.l_orderkey
+        JOIN tasksample.public.line_item_margin lim ON lim.dw_line_item_shk = li.dw_line_item_shk
+        LEFT OUTER JOIN tasksample.public.part p ON p.p_partkey = li.l_partkey
+        LEFT OUTER JOIN tasksample.public.partsupp s ON s.ps_suppkey = li.l_suppkey
+        LEFT OUTER JOIN l_cust c ON o.o_custkey = c.c_custkey AND o.o_orderdate >= c.active_date AND o.o_orderdate < c.inactive_date
+    WHERE
+        li.o_orderdate >= l_start_dt
+        AND li.o_orderdate < l_end_dt
+    ORDER BY o.o_orderdate;
+  
+  END FOR;
+  
+  RETURN 'SUCCESS';
+  
+END;
+$$;
 
 
 select 

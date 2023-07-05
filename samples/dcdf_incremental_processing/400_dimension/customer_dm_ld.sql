@@ -25,32 +25,33 @@ CREATE TABLE customer_dm (
   dw_load_ts       TIMESTAMP,
   dw_update_ts     TIMESTAMP
 );
-execute immediate $$
-
-begin
-    
-   insert overwrite into customer_dm
-   select
-       p.dw_customer_shk
-      ,p.c_custkey
-      ,p.c_name
-      ,p.c_address
-      ,p.c_nationkey
-      ,p.c_phone
-      ,p.c_acctbal
-      ,p.c_mktsegment
-      ,p.c_comment as comment
-      ,p.dw_load_ts
-      ,p.dw_load_ts as dw_update_ts
-   from
-       dev_webinar_orders_rl_db.tpch.customer_hist p
-   ;
-  
-  return 'SUCCESS';
-
-end;
+CREATE OR REPLACE PROCEDURE dim_customer_data()
+RETURNS STRING
+LANGUAGE SQL
+EXECUTE AS CALLER
+AS
 $$
-;
+BEGIN
+    
+    INSERT OVERWRITE INTO customer_dm
+    SELECT
+        p.dw_customer_shk,
+        p.c_custkey,
+        p.c_name,
+        p.c_address,
+        p.c_nationkey,
+        p.c_phone,
+        p.c_acctbal,
+        p.c_mktsegment,
+        p.c_comment AS comment,
+        p.dw_load_ts,
+        p.dw_load_ts AS dw_update_ts
+    FROM tasksample.public.customer_hist p;
+
+    RETURN 'SUCCESS';
+    
+END;
+$$;
 
 
 select *

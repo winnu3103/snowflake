@@ -46,6 +46,13 @@ CREATE TABLE customer_stg (
 truncate table customer_stg;
 
 -- perform bulk load
+CREATE OR REPLACE PROCEDURE stg_customer_data()
+RETURNS VARCHAR
+LANGUAGE SQL
+AS
+$$
+BEGIN
+    EXECUTE IMMEDIATE '
 copy into
     customer_stg
 from
@@ -71,7 +78,11 @@ pattern       = '.*customer/data.*\.csv\.gz'
 file_format   = ( type=csv field_optionally_enclosed_by = '"' )
 on_error      = skip_file
 --validation_mode = return_all_errors
-;
+;';
+
+    RETURN 'COPY INTO statement executed successfully.';
+END;
+$$;
 
 --
 -- review history of load errors

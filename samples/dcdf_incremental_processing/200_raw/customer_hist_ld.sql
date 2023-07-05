@@ -40,109 +40,75 @@ CREATE TABLE customer_hist (
   dw_file_row_no      INTEGER,
   dw_load_ts          TIMESTAMP
 );
-execute immediate $$
 
-declare
-  l_start_dt date;
-  l_end_dt   date;
-  -- Grab the dates for the logical partitions to process
-  c1 cursor for select start_dt, end_dt FROM table(dev_webinar_common_db.util.dw_delta_date_range_f('week')) order by 1;
-
-begin
-
-  --
-  -- Loop through the dates to incrementally process based on the logical partition definition.
-  -- In this example, the logical partitions are by week.
-  --
-  for record in c1 do
-    l_start_dt := record.start_dt;
-    l_end_dt   := record.end_dt;
-
-    --
-    -- insert new and modified records into history table with version date
-    -- dedupe source records as part of insert
-    --
-    -- run a second time to see that no rows will be inserted
-    --
-    insert into customer_hist
-    with l_stg as
-    (
-        --
-        -- Driving CTE to identify all records in the logical partition to be processed.
-        select
-            -- generate hash key and hash diff to streamline processing
-             sha1_binary( s.c_custkey || to_char( s.change_date, 'yyyymmdd' ) )  as dw_customer_shk
-            --
-            -- note that last_modified_dt is not included in the hash diff since it only represents recency of the record versus an 
-            -- actual meaningful change in the data
-            ,sha1_binary( concat( s.c_custkey || to_char( s.change_date, 'yyyymmdd' )
-                                         ,'|', coalesce( to_char( s.change_date, 'yyyymmdd'), '~' )
-                                         ,'|', coalesce( s.c_name, '~' )
-                                         ,'|', coalesce( s.c_address, '~' )
-                                         ,'|', coalesce( to_char( s.c_nationkey ), '~' )
-                                         ,'|', coalesce( s.c_phone, '~' )
-                                         ,'|', coalesce( to_char( s.c_acctbal ), '~' )
-                                         ,'|', coalesce( s.c_mktsegment, '~' )
-                                         ,'|', coalesce( s.c_comment, '~' )
-                                )
-        
-                        )               as dw_hash_diff
-            ,s.*
-        from
-            customer_stg s
-        where
-                s.change_date >= :l_start_dt
-            and s.change_date  < :l_end_dt
-    )
-    ,l_deduped as
-    (
-        --
-        -- Dedupe the records from the staging table.
-        -- This assumes that there may be late arriving or duplicate data that were loaded
-        -- Need to identify the most recent record and use that to update the Current state table.
-        -- as there is no reason to process each individual change in the record, the last one would have the most recent updates
-        select
-            *
-        from
-            l_stg
-        qualify
-            row_number() over( partition by dw_hash_diff order by change_date desc, dw_file_row_no )  = 1
-    )
-    select
-         s.dw_customer_shk
-        ,s.dw_hash_diff
-        ,s.dw_load_ts             as dw_version_ts
-        ,s.change_date
-        ,s.c_custkey
-        ,s.c_name
-        ,s.c_address
-        ,s.c_nationkey
-        ,s.c_phone
-        ,s.c_acctbal
-        ,s.c_mktsegment
-        ,s.c_comment
-        ,s.dw_file_name
-        ,s.dw_file_row_no
-        ,current_timestamp()    as dw_load_ts
-    
-    from
-        l_deduped s
-    where
-        s.dw_hash_diff not in
-        (
-            select dw_hash_diff from customer_hist 
-        )
-    order by
-        c_custkey  -- physically sort rows by a logical partitioning date
-    ;
-
-  end for;
-
-  return 'SUCCESS';
-
-end;
+CREATE OR REPLACE PROCEDURE process_customer_data()
+RETURNS STRING
+LANGUAGE SQL
+EXECUTE AS CALLER
+AS
 $$
-;
+DECLARE
+    l_start_dt DATE;
+    l_end_dt DATE;
+
+BEGIN
+
+    FOR record IN (SELECT start_dt, end_dt FROM table(dev_webinar_common_db.util.dw_delta_date_range_f('week')) ORDER BY 1) DO
+        l_start_dt := record.start_dt;
+        l_end_dt := record.end_dt;
+
+        INSERT INTO customer_hist
+        WITH l_stg AS (
+            SELECT
+                SHA1_BINARY(s.c_custkey || TO_CHAR(s.change_date, 'yyyymmdd')) AS dw_customer_shk,
+                SHA1_BINARY(CONCAT(s.c_custkey || TO_CHAR(s.change_date, 'yyyymmdd'),
+                    '|', COALESCE(TO_CHAR(s.change_date, 'yyyymmdd'), '~'),
+                    '|', COALESCE(s.c_name, '~'),
+                    '|', COALESCE(s.c_address, '~'),
+                    '|', COALESCE(TO_CHAR(s.c_nationkey), '~'),
+                    '|', COALESCE(s.c_phone, '~'),
+                    '|', COALESCE(TO_CHAR(s.c_acctbal), '~'),
+                    '|', COALESCE(s.c_mktsegment, '~'),
+                    '|', COALESCE(s.c_comment, '~')
+                )) AS dw_hash_diff,
+                s.*
+            FROM customer_stg s
+            WHERE s.change_date >= l_start_dt
+                AND s.change_date < l_end_dt
+        ),
+        l_deduped AS (
+            SELECT *
+            FROM l_stg
+            QUALIFY ROW_NUMBER() OVER (PARTITION BY dw_hash_diff ORDER BY change_date DESC, dw_file_row_no) = 1
+        )
+        SELECT
+            s.dw_customer_shk,
+            s.dw_hash_diff,
+            s.dw_load_ts AS dw_version_ts,
+            s.change_date,
+            s.c_custkey,
+            s.c_name,
+            s.c_address,
+            s.c_nationkey,
+            s.c_phone,
+            s.c_acctbal,
+            s.c_mktsegment,
+            s.c_comment,
+            s.dw_file_name,
+            s.dw_file_row_no,
+            CURRENT_TIMESTAMP() AS dw_load_ts
+        FROM l_deduped s
+        WHERE s.dw_hash_diff NOT IN (
+            SELECT dw_hash_diff FROM customer_hist
+        )
+        ORDER BY c_custkey;
+
+    END FOR;
+
+    RETURN 'SUCCESS';
+
+END;
+$$;
 
 select *
 from dev_webinar_orders_rl_db.tpch.customer_hist

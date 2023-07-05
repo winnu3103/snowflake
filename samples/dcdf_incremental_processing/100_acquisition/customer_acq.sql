@@ -35,7 +35,13 @@ use warehouse DEV_WEBINAR_WH;
 */
 
 -- run this 2 or 3 times to produce overlapping files with new and modified records.
-copy into
+CREATE OR REPLACE PROCEDURE acq_customer_data()
+RETURNS VARCHAR
+LANGUAGE SQL
+AS
+$$
+BEGIN
+    EXECUTE IMMEDIATE 'copy into
     @~/customer
 from
 (
@@ -107,4 +113,8 @@ overwrite        = false
 single           = false
 include_query_id = true
 max_file_size    = 16000000
-;
+;';
+        
+    RETURN 'COPY INTO statement executed successfully.';
+END;
+$$; 
